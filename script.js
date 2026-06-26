@@ -1,3 +1,4 @@
+
 // ── Game state ──────────────────────────────────────
 let score = 0;
 let timeLeft = 30;
