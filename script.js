@@ -1,45 +1,176 @@
-// Variables to control game state
-let gameRunning = false; // Keeps track of whether game is active or not
-let dropMaker; // Will store our timer that creates drops regularly
+// ── Game state ──────────────────────────────────────
+let score = 0;
+let timeLeft = 30;
+let lives = 3;
+let gameRunning = false;
+let timerInterval = null;
+let dropInterval = null;
 
-// Wait for button click to start the game
-document.getElementById("start-btn").addEventListener("click", startGame);
+// ── Elements ─────────────────────────────────────────
+const arena      = document.getElementById('game-container');
+const overlay    = document.getElementById('overlay');
+const overlayBtn = document.getElementById('overlay-btn');
+const oTitle     = document.getElementById('overlay-title');
+const oBody      = document.getElementById('overlay-body');
+const scoreEl    = document.getElementById('score-val');
+const timeEl     = document.getElementById('time-val');
+const livesEl    = document.getElementById('lives-val');
+const resetBtn   = document.getElementById('reset-btn');
 
+// ── Start ─────────────────────────────────────────────
 function startGame() {
-  // Prevent multiple games from running at once
   if (gameRunning) return;
-
+  score = 0; timeLeft = 30; lives = 3;
+  updateHUD();
+  overlay.classList.add('hidden');
   gameRunning = true;
-
-  // Create new drops every second (1000 milliseconds)
-  dropMaker = setInterval(createDrop, 1000);
+  dropInterval  = setInterval(spawnDrop, 1000);
+  timerInterval = setInterval(tick, 1000);
 }
 
-function createDrop() {
-  // Create a new div element that will be our water drop
-  const drop = document.createElement("div");
-  drop.className = "water-drop";
+// ── Reset ─────────────────────────────────────────────
+function resetGame() {
+  stopGame();
+  document.querySelectorAll('.drop').forEach(d => d.remove());
+  score = 0; timeLeft = 30; lives = 3;
+  updateHUD();
+  oTitle.textContent = '💧 Water Drop';
+  oBody.innerHTML = 'Tap the <strong class="blue">blue drops</strong> to score points.<br>' +
+    '<span class="orange">Orange drops</span> are dirty — tap them and lose a life!';
+  overlayBtn.textContent = 'Start Game';
+  overlay.classList.remove('hidden');
+}
 
-  // Make drops different sizes for visual variety
-  const initialSize = 60;
-  const sizeMultiplier = Math.random() * 0.8 + 0.5;
-  const size = initialSize * sizeMultiplier;
-  drop.style.width = drop.style.height = `${size}px`;
+function stopGame() {
+  gameRunning = false;
+  clearInterval(timerInterval);
+  clearInterval(dropInterval);
+}
 
-  // Position the drop randomly across the game width
-  // Subtract 60 pixels to keep drops fully inside the container
-  const gameWidth = document.getElementById("game-container").offsetWidth;
-  const xPosition = Math.random() * (gameWidth - 60);
-  drop.style.left = xPosition + "px";
+// ── Timer ─────────────────────────────────────────────
+function tick() {
+  timeLeft--;
+  timeEl.textContent = timeLeft;
+  if (timeLeft <= 0) endGame();
+}
 
-  // Make drops fall for 4 seconds
-  drop.style.animationDuration = "4s";
+// ── End game ──────────────────────────────────────────
+function endGame() {
+  stopGame();
+  document.querySelectorAll('.drop').forEach(d => d.remove());
+  const win = score >= 50;
+  oTitle.textContent = win ? '🏆 You did it!' : '⏱ Time\'s up!';
+  oBody.innerHTML = `Final score: <strong style="color:#FFC907;font-size:28px">${score}</strong><br>
+    ${score < 10  ? 'Keep trying!' :
+      score < 50  ? 'Great effort!' : '💧 Clean water hero!'}`;
+  overlayBtn.textContent = 'Play Again';
+  overlay.classList.remove('hidden');
+  if (win) fireConfetti();
+}
 
-  // Add the new drop to the game screen
-  document.getElementById("game-container").appendChild(drop);
+overlayBtn.addEventListener('click', startGame);
+resetBtn.addEventListener('click', resetGame);
 
-  // Remove drops that reach the bottom (weren't clicked)
-  drop.addEventListener("animationend", () => {
-    drop.remove(); // Clean up drops that weren't caught
+// ── Drop spawning ─────────────────────────────────────
+function spawnDrop() {
+  if (!gameRunning) return;
+
+  const isBad = Math.random() < 0.3;
+  const size  = 44 + Math.random() * 24;       // 44–68 px
+  const speed = 2.5 + Math.random() * 2;       // 2.5–4.5 s
+  const x     = Math.random() * (arena.offsetWidth - size - 10) + 5;
+
+  const drop = document.createElement('div');
+  drop.className = `drop ${isBad ? 'drop-bad' : 'drop-good'}`;
+  drop.style.width  = size + 'px';
+  drop.style.height = size + 'px';
+  drop.style.left   = x + 'px';
+  drop.style.animationDuration = speed + 's';
+
+  drop.addEventListener('click', (e) => onDropClick(e, drop, isBad));
+  drop.addEventListener('animationend', () => drop.remove());
+
+  arena.appendChild(drop);
+}
+
+function onDropClick(e, drop, isBad) {
+  if (!gameRunning) return;
+  e.stopPropagation();
+  drop.remove();
+
+  if (isBad) {
+    loseLife();
+  } else {
+    score++;
+    updateHUD();
+  }
+}
+
+function loseLife() {
+  lives = Math.max(0, lives - 1);
+  updateHUD();
+  if (lives === 0) endGame();
+}
+
+// ── HUD ───────────────────────────────────────────────
+function updateHUD() {
+  scoreEl.textContent = score;
+  timeEl.textContent  = timeLeft;
+  livesEl.textContent = '♥'.repeat(lives) + '♡'.repeat(Math.max(0, 3 - lives));
+}
+
+// ── Confetti (win celebration) ────────────────────────
+const canvas = document.getElementById('confetti-canvas');
+const ctx    = canvas.getContext('2d');
+let particles = [];
+let animId    = null;
+
+function fireConfetti() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  particles = [];
+  const colors = ['#FFC907', '#2E9DF7', '#4FCB53', '#F16061', '#8BD1CB', '#FF902A'];
+  for (let i = 0; i < 160; i++) {
+    particles.push({
+      x:     Math.random() * canvas.width,
+      y:     Math.random() * canvas.height * .3 - canvas.height * .2,
+      w:     7 + Math.random() * 8,
+      h:     5 + Math.random() * 6,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      vx:    (Math.random() - .5) * 6,
+      vy:    2 + Math.random() * 4,
+      rot:   Math.random() * Math.PI * 2,
+      rotV:  (Math.random() - .5) * .15,
+      alpha: 1
+    });
+  }
+  if (animId) cancelAnimationFrame(animId);
+  drawConfetti();
+}
+
+function drawConfetti() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  let alive = false;
+  particles.forEach(p => {
+    p.x  += p.vx;
+    p.y  += p.vy;
+    p.vy += .12;
+    p.rot += p.rotV;
+    if (p.y > canvas.height * .7) p.alpha -= .025;
+    if (p.alpha > 0) alive = true;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.alpha);
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+    ctx.restore();
   });
+  if (alive) animId = requestAnimationFrame(drawConfetti);
+  else ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
+
+window.addEventListener('resize', () => {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+});
